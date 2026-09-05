@@ -1,60 +1,54 @@
-import './style.css'
-import heroImg from './assets/hero.png'
-import typescriptLogo from './assets/typescript.svg'
-import viteLogo from './assets/vite.svg'
-import { setupCounter } from './counter.ts'
+import "./style.css";
+import { App } from "./ui/app.ts";
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${typescriptLogo}" class="framework" alt="TypeScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.ts</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+/**
+ * Boot.
+ *
+ * The overlay and the black ground come from the critical inline styles in
+ * index.html, so the first paint is already correct — this only decides *when*
+ * to hand over to the real UI. The title is revealed once the pixel font has
+ * genuinely loaded, because a fallback renders it at a very different width and
+ * the mismatch is obvious as it animates away.
+ */
+async function boot(): Promise<void> {
+  const reveal = () => document.body.classList.add("fonts-ready");
+  const handOver = () => {
+    document.body.classList.remove("booting");
+    document.body.classList.add("booted");
+  };
 
-<div class="ticks"></div>
+  try {
+    const root = document.querySelector<HTMLDivElement>("#app")!;
+    await new App(root).mount();
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://www.typescriptlang.org" target="_blank">
-          <img class="button-icon" src="${typescriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      reveal();
+      handOver();
+      return;
+    }
 
-<div class="ticks"></div>
-<section id="spacer"></section>
-`
+    try {
+      await Promise.race([
+        document.fonts.load('12px "Press Start 2P"'),
+        new Promise((r) => setTimeout(r, 1200)),
+      ]);
+    } catch {
+      /* font loading unavailable; show the title anyway */
+    }
+    reveal();
+    await new Promise((r) => setTimeout(r, 420));
+  } finally {
+    // Whatever happened above, never strand the user on a black screen.
+    reveal();
+    handOver();
+  }
+}
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+void boot();
+
+// Offline is the entire premise, so registering this is not optional polish.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  globalThis.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
