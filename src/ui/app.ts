@@ -47,6 +47,9 @@ export class App {
   private probes = new Map<string, ProbeResult>();
 
   private controller: AbortController | null = null;
+  private wakeLock: WakeLockSentinel | null = null;
+  private hiddenAt = 0;
+  private hiddenMs = 0;
   private txSession: TxSession | null = null;
   private rxSession: RxSession | null = null;
   private rxSnapshot: RxSnapshot | null = null;
@@ -76,6 +79,7 @@ export class App {
     this.restorePrefs();
     this.buildShell();
     this.meter.subscribe(() => this.paint());
+    document.addEventListener("visibilitychange", () => this.onVisibility());
     await this.runProbes();
     this.renderSidebar();
     this.paint();
@@ -112,6 +116,45 @@ export class App {
     } catch {
       /* storage disabled; preferences just don't persist */
     }
+  }
+
+  /**
+   * Browsers clamp timers to roughly one per second in a hidden tab, which drops
+   * a transmit loop from ~80 frames/s to ~1 — it looks exactly like a dead
+   * channel. Nothing can be done about the clamp, so: hold a screen wake lock
+   * while a session runs (the usual way a tab gets hidden is the screen locking),
+   * and when it happens anyway, say so rather than let the user wonder.
+   *
+   * CHIRP is the exception — it is driven by audio events, not timers, and keeps
+   * running. The screen-based channels can't transmit hidden regardless, since
+   * the screen is the transmitter.
+   */
+  private async holdWakeLock(): Promise<void> {
+    try {
+      this.wakeLock = (await navigator.wakeLock?.request("screen")) ?? null;
+    } catch {
+      /* unsupported, or refused because the document is already hidden */
+    }
+  }
+
+  private releaseWakeLock(): void {
+    void this.wakeLock?.release().catch(() => {});
+    this.wakeLock = null;
+  }
+
+  private onVisibility(): void {
+    if (!this.controller) return;
+    if (document.hidden) {
+      this.hiddenAt = performance.now();
+      this.log("TAB HIDDEN ..... TIMERS THROTTLED TO ~1/s — TRANSFER IS CRAWLING");
+    } else {
+      const spent = performance.now() - this.hiddenAt;
+      this.hiddenMs += spent;
+      this.log(`TAB VISIBLE .... AFTER ${(spent / 1000).toFixed(0)}s IN BACKGROUND`);
+      // A wake lock is released automatically when the page hides; take it back.
+      void this.holdWakeLock();
+    }
+    this.paint();
   }
 
   private async runProbes(): Promise<void> {
@@ -424,8 +467,10 @@ export class App {
     this.txSession = null;
     this.rxSession = null;
     this.stopping = false;
+    this.hiddenMs = 0;
     this.meter.set(0);
     this.startedAt = performance.now();
+    void this.holdWakeLock();
 
     // The session outlives any one channel, so escalation can swap the channel
     // underneath it without restarting the transfer.
@@ -442,6 +487,7 @@ export class App {
     }
     this.txSession = null;
     this.rxSession = null;
+    this.releaseWakeLock();
     this.renderSidebar();
     this.paint();
   }
@@ -632,6 +678,8 @@ export class App {
   // --- painting ----------------------------------------------------------
 
   private paint(): void {
+    // Drives the mobile layout: a running session gives the stage more room.
+    document.body.classList.toggle("running", !!this.controller);
     const lines: Line[] = [];
     lines.push({ label: "TRANSPORT", value: `${this.transport.codename} / ${this.mode.label}`, tone: "accent" });
     lines.push({ label: "ROLE", value: this.role === "tx" ? "TRANSMIT" : "RECEIVE" });
@@ -660,15 +708,33 @@ export class App {
         tone: snap?.name ? "normal" : "muted",
       });
       lines.push({ label: "RX LOCK", value: `${bar(this.meter.get())}  ${Math.round(this.meter.get() * 100)}%`, tone: "accent" });
+      // Before the header lands there is no denominator to show, but symbols are
+      // still being banked as orphans and replayed the moment it arrives. Say so:
+      // a bare "HEADER 0/?" reads as a stall when it is actually working.
+      const banked = snap?.symbolsAccepted ?? 0;
+      const [haveParts, wantParts] = snap?.headerParts ?? [0, 0];
       lines.push({
         label: "BLOCKS",
-        value: snap?.K ? `${group(snap.blocks)} / ${group(snap.K)}` : `HEADER ${snap ? `${snap.headerParts[0]}/${snap.headerParts[1] || "?"}` : "0/?"}`,
+        value: snap?.K
+          ? `${group(snap.blocks)} / ${group(snap.K)}`
+          : wantParts
+            ? `HEADER ${haveParts}/${wantParts}  (${group(banked)} BANKED)`
+            : `AWAITING HEADER  (${group(banked)} BANKED)`,
+        tone: snap?.K ? "normal" : "muted",
       });
       lines.push({
         label: "SYMBOLS",
         value: snap ? `${group(snap.symbolsAccepted)} GOOD   ${group(snap.framesBad)} REJECTED` : "0",
       });
       if (snap?.note) lines.push({ label: "NOTE", value: snap.note, tone: "warn" });
+    }
+
+    if (this.hiddenMs > 1500) {
+      lines.push({
+        label: "BACKGROUNDED",
+        value: `${(this.hiddenMs / 1000).toFixed(0)}s THROTTLED — KEEP THIS TAB IN FRONT`,
+        tone: "warn",
+      });
     }
 
     const elapsed = this.controller ? performance.now() - this.startedAt : 0;

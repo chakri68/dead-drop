@@ -223,6 +223,39 @@ Choosing 16-byte symbols instead of 8 cut that from 27.8 min to 17.7, and
 crosses the threshold where it starts carrying a filename and a full digest and
 needs an extra fragment. Non-monotonic cost curves are why you measure.
 
+### two things that bite in practice
+
+**Backgrounded tabs.** Browsers clamp timers to about one per second in a hidden
+tab, which drops a transmit loop from ~80 frames/s to ~1. It looks exactly like a
+dead channel. Nothing can lift the clamp, so the app holds a screen wake lock
+while a session runs, notices when it gets hidden anyway, and says so in the log
+and the readout rather than letting you wonder:
+
+```
+> BACKGROUNDED ....... 4s THROTTLED — KEEP THIS TAB IN FRONT
+```
+
+CHIRP is the exception — it's driven by audio events, not timers, and keeps
+running. The screen-based channels can't transmit while hidden regardless, since
+the screen *is* the transmitter.
+
+**Waiting for the header.** Symbols that arrive before the header can't be
+decoded yet, so they're banked as orphans and replayed the moment it lands. The
+readout says so, because "nothing is happening" and "collecting, but I don't
+know what this is yet" look identical otherwise:
+
+```
+> BLOCKS ............. AWAITING HEADER  (56 BANKED)
+```
+
+I tried making the header cadence ramp — dense at the start, relaxing to the
+configured rate — on the theory that first-header acquisition was a bottleneck.
+Measured, it wasn't: header wait is 1-7% of a large transfer's frames, and the
+ramp cost CHIRP 50% more airtime on 1 KB (15.0s → 22.5s) because CHIRP's header
+is two fragments and small transfers never reach the relaxed cadence. Reverted.
+The cases where header wait does dominate (a 40-byte MORSE message at 75% loss,
+78% of frames) are already hopeless for other reasons.
+
 ### field tests
 
 **Not yet run.** Everything above is loopback and simulation. Two devices in a

@@ -778,21 +778,44 @@ body.booted .shell {
   .resizer {
     display: none;
   }
+  /* The controls are a setup step; the camera is the whole job. Give the well
+     most of the screen, and take even more once a session is running — by then
+     every choice in the sidebar has already been made. */
   .sidebar {
     width: 100%;
     border-left: none;
     border-top: 1px solid var(--border);
-    max-height: 45%;
+    max-height: 32%;
+  }
+  body.running .sidebar {
+    max-height: 20%;
   }
   .main-col {
-    flex: 1 1 55%;
+    flex: 1 1 68%;
     min-height: 240px;
   }
+  body.running .main-col {
+    flex: 1 1 80%;
+  }
   .well {
-    margin: 8px;
+    margin: 6px;
+  }
+  /* Denser readout: eight lines of leader dots is a lot of a phone screen. */
+  .readout-host {
+    padding: 7px 10px;
   }
   .rline {
     font-size: 11px;
+    line-height: 1.35;
+  }
+  .readout {
+    gap: 0;
+  }
+  .controlbar {
+    padding: 0 8px 8px;
+  }
+  .viz {
+    min-height: 180px;
   }
 }
 
