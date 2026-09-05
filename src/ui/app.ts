@@ -69,6 +69,7 @@ export class App {
   private startBtn!: HTMLButtonElement;
   private statsEl!: HTMLElement;
   private escalateEl!: HTMLElement;
+  private strip!: HTMLElement;
   private ledgerEl!: HTMLElement;
 
   constructor(root: HTMLElement) {
@@ -146,7 +147,7 @@ export class App {
     if (!this.controller) return;
     if (document.hidden) {
       this.hiddenAt = performance.now();
-      this.log("TAB HIDDEN ..... TIMERS THROTTLED TO ~1/s — TRANSFER IS CRAWLING");
+      this.log("TAB HIDDEN ..... BROWSER THROTTLES TIMERS HERE — KEEP IT IN FRONT");
     } else {
       const spent = performance.now() - this.hiddenAt;
       this.hiddenMs += spent;
@@ -183,7 +184,11 @@ export class App {
     const readoutHost = el("div", { class: "readout-host" });
     this.readout = new Readout(readoutHost);
 
-    const well = el("div", { class: "well" }, this.stage, readoutHost);
+    // Sits between the stage and the readout, so a transport replacing the
+    // stage's contents can't clobber it. Also: while aiming a camera you are
+    // looking at the picture, not at a line of text below it.
+    this.strip = el("div", { class: "strip" }, el("div", { class: "strip-fill" }));
+    const well = el("div", { class: "well" }, this.stage, this.strip, readoutHost);
 
     this.sidebar = el("aside", { class: "sidebar" });
     const resizer = el("div", { class: "resizer", title: "drag to resize" });
@@ -707,7 +712,7 @@ export class App {
         value: snap?.name ? `${snap.name}  ${group(snap.plainLen ?? 0)} B` : snap?.plainLen ? `SEALED  ${group(snap.plainLen)} B` : "— WAITING —",
         tone: snap?.name ? "normal" : "muted",
       });
-      lines.push({ label: "RX LOCK", value: `${bar(this.meter.get())}  ${Math.round(this.meter.get() * 100)}%`, tone: "accent" });
+      lines.push({ label: "RX LOCK", value: `${bar(this.meter.get())}  ${Math.round(this.meter.get() * 100)}%` });
       // Before the header lands there is no denominator to show, but symbols are
       // still being banked as orphans and replayed the moment it arrives. Say so:
       // a bare "HEADER 0/?" reads as a stall when it is actually working.
@@ -728,6 +733,14 @@ export class App {
       });
       if (snap?.note) lines.push({ label: "NOTE", value: snap.note, tone: "warn" });
     }
+
+    const prog = this.progress();
+    lines.push({
+      label: "PROGRESS",
+      value: prog === null ? "·".repeat(20) : `${bar(prog, 20)}  ${String(Math.floor(prog * 100)).padStart(3)}%`,
+      tone: "accent",
+    });
+    this.paintStrip(prog);
 
     if (this.hiddenMs > 1500) {
       lines.push({
@@ -775,6 +788,39 @@ export class App {
   }
 
   /**
+   * How far along we are, 0..1, or null when there is genuinely nothing to
+   * measure against yet.
+   *
+   * Deliberately *not* decoded blocks. Peeling is bursty — it sits near zero and
+   * then resolves the whole residual system at once — so a block-driven bar
+   * looks frozen for most of a transfer and then jumps. Symbols collected
+   * against symbols needed climbs smoothly with every frame that arrives, and
+   * reaches full at about the moment decoding completes, which is what a
+   * progress bar is for.
+   */
+  private progress(): number | null {
+    if (this.completion) return 1;
+    if (!this.controller) return null;
+
+    if (this.role === "tx") {
+      const session = this.txSession;
+      if (!session) return null;
+      // The transmitter has no feedback, so the honest measure is coverage of
+      // the payload in the current pass: one pass is enough for a clean channel.
+      return session.K > 0 ? (session.symbolsOut % session.K) / session.K : 0;
+    }
+
+    // No header yet means no denominator exists. Symbols are still being banked,
+    // and the BLOCKS line says how many; here it shows as an indeterminate sweep.
+    const snap = this.rxSnapshot;
+    if (!snap?.K) return null;
+
+    // The fountain needs a few percent more symbols than there are blocks; hold
+    // just short of full until it actually finishes rather than sit at 100%.
+    return Math.min(0.99, snap.symbolsAccepted / (snap.K * 1.05));
+  }
+
+  /**
    * Idle briefing. The stage is where the channel's live visual goes, and an
    * empty black rectangle before you press start reads as broken rather than
    * ready — so it explains what this channel is and what it needs of you.
@@ -814,6 +860,16 @@ export class App {
         ),
       ),
     );
+  }
+
+  private paintStrip(fraction: number | null): void {
+    const fill = this.strip.firstElementChild as HTMLElement;
+    const running = !!this.controller || !!this.completion;
+    this.strip.classList.toggle("on", running);
+    // No denominator yet: sweep instead of filling, so it reads as "working"
+    // rather than "stuck at zero".
+    this.strip.classList.toggle("indeterminate", running && fraction === null);
+    fill.style.width = fraction === null ? "" : `${(fraction * 100).toFixed(1)}%`;
   }
 
   private async renderLedger(): Promise<void> {

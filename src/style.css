@@ -916,3 +916,45 @@ body.booted .shell {
   border-color: var(--accent);
   background: rgba(255, 176, 0, 0.1);
 }
+
+/* --- progress strip ------------------------------------------------------ */
+
+.strip {
+  height: 4px;
+  flex-shrink: 0;
+  background: var(--panel-2);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.strip.on {
+  opacity: 1;
+}
+.strip-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(255, 176, 0, 0.7);
+  transition: width 0.25s ease-out;
+}
+/* Nothing to measure against yet — sweep rather than sit at zero. */
+.strip.indeterminate .strip-fill {
+  width: 28%;
+  transition: none;
+  animation: sweep 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(357%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .strip.indeterminate .strip-fill {
+    animation: none;
+    width: 100%;
+    opacity: 0.35;
+  }
+}
