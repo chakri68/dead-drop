@@ -92,6 +92,13 @@
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
+    <!-- Amber Phosphor theme tokens — the single source of truth, shared with
+         every other chakri.me site. Render-blocking, so the tokens are in effect
+         before anything paints. The service worker caches it, so after the first
+         load this resolves from disk and the app themes itself with no signal at
+         all; the inline critical CSS above still covers the very first frame,
+         and the case where this never arrives. -->
+    <link rel="stylesheet" href="https://theme.chakri.me/tokens.css" />
   </head>
   <body class="booting">
     <div id="boot"><div class="boot-title">DEAD DROP</div></div>

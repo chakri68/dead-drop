@@ -1,31 +1,18 @@
 /* Amber phosphor terminal. Pure black, one accent, everything monospaced. */
 
+/* The 12 shared tokens (--bg --panel-2 --panel --border --text --muted --accent
+   --accent-dim --warn --danger --font-pixel --font-mono, plus color-scheme) come
+   from theme.chakri.me/tokens.css, linked in index.html and cached by the
+   service worker so the app still themes itself offline. Never redefine them
+   here — that shadows the source and drifts. Below: dead drop's own extras, and
+   the base styling that consumes the shared set. The literal colours in
+   index.html's inline critical CSS stay literal: they paint the boot overlay
+   before any stylesheet, cached or not, can exist. */
 :root {
-  /* Surfaces (darkest -> lightest) */
-  --bg: #000000;
-  --panel-2: #000;
-  --panel: #0b0b0a;
-
-  /* Lines & text */
-  --border: #2b2925;
-  --text: #ece7da;
-  --muted: #8b8574;
-
-  /* Accent — the only chromatic colour */
-  --accent: #ffb000;
-  --accent-dim: #cc8a00;
-  --warn: #ff6a2b;
-  --danger: #ff6b6b;
-
-  --font-pixel: "Press Start 2P", ui-monospace, monospace;
-  --font-mono:
-    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
   --sidebar-w: 380px;
 
   font-family: var(--font-mono);
   font-size: 13px;
-  color-scheme: dark;
 }
 
 * {
